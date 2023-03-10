@@ -36,7 +36,7 @@ from matplotlib import pyplot as plt
 import tensorflow as tf
 
 
-df = pd.read_csv("/home/engrimmanuel/Desktop/NIR/jackfruit NIR with TSS.csv")
+df = pd.read_csv("file location.csv")
 #
 print(df.describe().T)# To print the data information
 
