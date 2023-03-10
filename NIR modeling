@@ -1,0 +1,607 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Jan 13 15:51:29 2023
+
+@author: engrimmanuel
+
+#k fold cross validation link
+'https://github.com/christianversloot/machine-learning-articles/blob/main/how-to-use-k-fold-cross-validation-with-keras.md'
+
+
+recomended version library 
+
+pip install pandas==1.5.1
+pip install matplotlib==3.6.2
+pip install seaborn==0.12.1
+pip install opencv-python==4.6.0.66
+pip install scikit-learn==1.1.3
+
+
+
+10 fold cross validation
+
+"""
+
+
+import numpy as np
+from sklearn.decomposition import PCA
+from sklearn.cross_decomposition import PLSRegression
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.svm import SVR
+from sklearn.neural_network import MLPRegressor
+import pandas as pd
+import seaborn as sns
+from matplotlib import pyplot as plt
+import tensorflow as tf
+
+
+df = pd.read_csv("/home/engrimmanuel/Desktop/NIR/jackfruit NIR with TSS.csv")
+#
+print(df.describe().T)# To print the data information
+
+print(df.isnull().sum()) #how many row do we have
+
+df = df.dropna() # to drop the null value
+
+print(df.isnull().sum()) #how many row do we have
+
+# from scipy import stats
+
+# # Calculate the z-scores
+# z = np.abs(stats.zscore(df))
+
+# # Set a threshold for the z-scores
+# threshold = 3
+
+# # Keep only the data points that have z-scores less than the threshold
+# df = df[(z < threshold).all(axis=1)]
+
+#Understand the data 
+sns.countplot(x="tss", data=df) #apple,orange, banana
+
+####### Replace categorical values with numbers########
+print("Distribution of data: ", df['tss'].value_counts())
+
+# Import necessary libraries
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, r2_score
+import autokeras as ak
+
+# Split the data into training and test sets
+
+print("Distribution of data: ", df['tss'].value_counts())
+
+# Get the counts of each tss value
+counts = df['tss'].value_counts()
+
+
+#Define the dependent variable that needs to be predicted (labels)
+y = df["tss"].values
+X = df.drop(['tss'], axis=1) # independent variables
+
+print("Labels before encoding are: ", np.unique(y)) #it will print the value of the label
+print("Distribution of data: ", df['tss'].value_counts())
+
+#############################################################################################
+
+"raw data"
+
+# Group the data by tss value
+grouped_data = df.groupby('tss')
+
+# Calculate the mean and standard deviation for each group raw data
+mean_data_raw = grouped_data.mean()
+std_data_raw = grouped_data.std()
+#calculate the mean and std of each tss
+mean_data_raw_band = pd.DataFrame(mean_data_raw.mean())
+std_data_raw_tss =  pd.DataFrame(std_data_raw.std())
+std_data_raw_tss.rename(columns={std_data_raw_tss.columns[0]: 'std'}, inplace=True)
+
+#convert into DataFrame
+table_raw= pd.concat([mean_data_raw_band,std_data_raw_tss], axis=1,keys=["mean","std"]).transpose()
+
+
+"""pre-treatment of the datasets using Savitzky-Golay, 
+Moltiplicatuve scatter correlation (MSC) and Standard Normal variation (SNV) """ 
+
+from pyspectra.transformers.spectral_correction import msc,sav_gol,snv
+
+#savgol
+import scipy
+
+X_savgol=scipy.signal.savgol_filter(X,window_length=18, polyorder=17)
+# Combine X and y into a single DataFrame
+X_savgol= pd.DataFrame(X_savgol, columns=X.columns)
+data_savgol=X_savgol
+data_savgol['tss'] = y
+
+# Group the data by tss value
+grouped_data_savgol= data_savgol.groupby('tss')
+
+# Calculate the mean and standard deviation for each group
+mean_data_savgol = grouped_data_savgol.mean()
+std_data_savgol = grouped_data_savgol.std()
+
+#calculate the mean and std of each tss
+mean_data_savgol_band = pd.DataFrame(mean_data_savgol.mean())
+std_data_savgol_tss =  pd.DataFrame(std_data_savgol.std())
+std_data_savgol_tss.rename(columns={std_data_savgol_tss.columns[0]: 'std'}, inplace=True)
+table_savgol= pd.concat([mean_data_savgol_band,std_data_savgol_tss], axis=1,keys=["mean","std"]).transpose()
+
+
+# Perform MSC
+msc = msc()
+msc.fit(X)
+X_msc = msc.transform(X)
+
+# Combine X and y into a single DataFrame
+data_msc= pd.DataFrame(X_msc, columns=X.columns)
+data_msc['tss'] = y
+
+# Group the data by tss value
+grouped_data_msc= data_msc.groupby('tss')
+
+# Calculate the mean and standard deviation for each group
+mean_data_msc = grouped_data_msc.mean()
+std_data_msc = grouped_data_msc.std()
+
+#calculate the mean and std of each tss
+mean_data_msc_band = pd.DataFrame(mean_data_msc.mean())
+std_data_msc_tss =  pd.DataFrame(std_data_msc.std())
+std_data_msc_tss.rename(columns={std_data_msc_tss.columns[0]: 'std'}, inplace=True)
+#convert into DataFrame
+table_msc= pd.concat([mean_data_msc_band,std_data_msc_tss], axis=1,keys=["mean","std"]).transpose()
+
+
+f, ax= plt.subplots(3,1,figsize=(10*2,8*2))
+f.subplots_adjust(hspace=1)
+ax[0].plot(mean_data_raw.transpose())
+ax[0].set_title("Raw spectra")
+
+# Create a table below the last plot raw data
+table = ax[0].table(cellText = [[round(val, 2) for val in row] for row in table_raw.values], colLabels=table_raw.columns, rowLabels=table_raw.index, loc='bottom')
+table.auto_set_font_size(False)
+table.set_fontsize(10)
+table.scale(1, 1.5)
+ax[0].set_xticks([])
+
+ax[1].plot(mean_data_savgol.transpose())
+ax[1].set_title("Savgol spectra")
+
+# Create a table below the last plot savgol
+table = ax[1].table(cellText = [[round(val, 2) for val in row] for row in table_savgol.values], colLabels=table_savgol.columns, rowLabels=table_raw.index, loc='bottom')
+table.auto_set_font_size(False)
+table.set_fontsize(10)
+table.scale(1, 1.5)
+ax[1].set_xticks([])
+
+ax[2].plot(mean_data_msc.transpose())
+ax[2].set_title("MSC spectra")
+
+# Create a table below the last plot MSC
+table = ax[2].table(cellText = [[round(val, 2) for val in row] for row in table_msc.values], colLabels=table_msc.columns, rowLabels=table_raw.index, loc='bottom')
+table.auto_set_font_size(False)
+table.set_fontsize(10)
+table.scale(1, 1.5)
+ax[2].set_xticks([])
+
+plt.show()
+
+##################################
+
+'rank all the highest to lowes std'
+
+sort_raw=std_data_raw_tss.sort_values(by='std',ascending=False)
+sort_savgol=std_data_savgol_tss.sort_values(by='std',ascending=False)
+sort_msc=std_data_msc_tss.sort_values(by='std',ascending=False)
+
+####################################
+
+'create new dataframe but sorted from highest to lowest value of std'
+
+sub_for_training_raw=X[sort_raw.index]
+sub_for_training_savgol=X_savgol[sort_savgol.index]
+sub_for_training_msc=X_msc[sort_msc.index]
+
+###################################
+
+"scaling the datasets "
+
+from sklearn.preprocessing import MinMaxScaler
+scaler = MinMaxScaler()
+
+#raw
+scaler.fit(sub_for_training_raw)
+X_raw_scaled =scaler.transform(sub_for_training_raw)
+
+scaler.fit(sub_for_training_savgol)
+X_savgol_scaled =scaler.transform(sub_for_training_savgol)
+
+scaler.fit(sub_for_training_msc)
+X_msc_scaled =scaler.transform(sub_for_training_msc)
+
+####################################
+
+
+X_train, X_val, Y_train, Y_val = train_test_split(X_raw_scaled, y, test_size=0.3, random_state=42)
+Xmsc_train, Xmsc_val, Ymsc_train, Ymsc_val = train_test_split(X_msc_scaled , y, test_size=0.3, random_state=42)
+Xsvn_train, Xsvn_val, Ysvn_train, Ysvn_val = train_test_split(X_savgol_scaled, y, test_size=0.3, random_state=42)
+# data wagging
+
+
+#############################################################################################
+resulta_raw=[]
+for i in range(1,19):
+    X_train, X_val, Y_train, Y_val = train_test_split(X_raw_scaled, y, test_size=0.3, random_state=42)
+
+    X_val, X_test, Y_val, Y_test = train_test_split(X_val, Y_val, test_size=0.3, random_state=42)
+
+
+    train_set = tf.data.Dataset.from_tensor_slices((X_train, Y_train))
+    val_set = tf.data.Dataset.from_tensor_slices((X_val, Y_val))
+
+    prediction = tf.data.Dataset.from_tensor_slices((X_test))
+
+
+    # X_train= np.array(X_train)
+    # X_test = np.array(X_test)
+
+    # Y_train = np.array(Y_train)
+    # Y_test = np.array(Y_test)
+
+
+    # Initialize the StructuredDataRegressor model
+    clf = ak.StructuredDataRegressor(max_trials=100, overwrite=True)
+
+    # Fit the model to the training data
+    clf.fit(train_set, epochs=50)
+
+    scores = clf.evaluate(val_set)
+    print(scores)
+
+    from sklearn.metrics import mean_squared_error, r2_score
+
+    # Make predictions on the test data
+    y_pred = clf.predict(prediction)
+
+    # Evaluate the model's performance
+    mse = mean_squared_error(Y_test, y_pred)
+    r2 = r2_score(Y_test, y_pred)    
+    resulta_raw.append((i, mse, r2))
+    model = clf.export_model()
+    model.summary()
+    model.save('/home/engrimmanuel/Desktop/NIR/model_X_raw_scaled_column 1 to '+str(i)+'.tf', save_format='tf')
+
+resulta_savgol=[]
+for i in range(1,19):
+    X_train, X_val, Y_train, Y_val = train_test_split(X_savgol_scaled, y, test_size=0.3, random_state=42)
+
+    X_val, X_test, Y_val, Y_test = train_test_split(X_val, Y_val, test_size=0.3, random_state=42)
+
+
+    train_set = tf.data.Dataset.from_tensor_slices((X_train, Y_train))
+    val_set = tf.data.Dataset.from_tensor_slices((X_val, Y_val))
+
+    prediction = tf.data.Dataset.from_tensor_slices((X_test))
+
+
+    # X_train= np.array(X_train)
+    # X_test = np.array(X_test)
+
+    # Y_train = np.array(Y_train)
+    # Y_test = np.array(Y_test)
+
+
+    # Initialize the StructuredDataRegressor model
+    clf = ak.StructuredDataRegressor(max_trials=100, overwrite=True)
+
+    # Fit the model to the training data
+    clf.fit(train_set, epochs=50)
+
+    scores = clf.evaluate(val_set)
+    print(scores)
+
+    from sklearn.metrics import mean_squared_error, r2_score
+
+    # Make predictions on the test data
+    y_pred = clf.predict(prediction)
+
+    # Evaluate the model's performance
+    mse = mean_squared_error(Y_test, y_pred)
+    r2 = r2_score(Y_test, y_pred)    
+    resulta_savgol.append((i, mse, r2))
+    model = clf.export_model()
+    model.summary()
+    model.save('/home/engrimmanuel/Desktop/NIR/model_X_savgol_scaled_column 1 to '+str(i)+'.tf', save_format='tf')
+
+
+resulta_msc=[]
+for i in range(1,19):
+    X_train, X_val, Y_train, Y_val = train_test_split(X_msc_scaled, y, test_size=0.3, random_state=42)
+
+    X_val, X_test, Y_val, Y_test = train_test_split(X_val, Y_val, test_size=0.3, random_state=42)
+
+
+    train_set = tf.data.Dataset.from_tensor_slices((X_train, Y_train))
+    val_set = tf.data.Dataset.from_tensor_slices((X_val, Y_val))
+
+    prediction = tf.data.Dataset.from_tensor_slices((X_test))
+
+
+    # X_train= np.array(X_train)
+    # X_test = np.array(X_test)
+
+    # Y_train = np.array(Y_train)
+    # Y_test = np.array(Y_test)
+
+
+    # Initialize the StructuredDataRegressor model
+    clf = ak.StructuredDataRegressor(max_trials=100, overwrite=True)
+
+    # Fit the model to the training data
+    clf.fit(train_set, epochs=50)
+
+    scores = clf.evaluate(val_set)
+    print(scores)
+
+    from sklearn.metrics import mean_squared_error, r2_score
+
+    # Make predictions on the test data
+    y_pred = clf.predict(prediction)
+
+    # Evaluate the model's performance
+    mse = mean_squared_error(Y_test, y_pred)
+    r2 = r2_score(Y_test, y_pred)    
+    resulta_msc.append((i, mse, r2))
+    model = clf.export_model()
+    model.summary()
+    #model.save('/home/engrimmanuel/Desktop/NIR/model_X_msc_scaled_column 1 to '+str(i)+'.tf',save_format='tf')
+
+
+
+
+
+
+
+
+
+
+#######################
+"Partial least square using RandomizedSearchCV"
+
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn.cross_decomposition import PLSRegression
+from sklearn.metrics import mean_squared_error, r2_score
+import numpy as np
+
+# Define the parameter space for PLS
+param_grid = {'n_components': np.arange(1, 18),
+              'scale': [True, False]}
+
+# Initialize the PLS model
+pls = PLSRegression()
+
+# Initialize the randomized search
+random_search = RandomizedSearchCV(pls, param_distributions=param_grid, n_iter=100, cv=5, scoring='r2')
+
+# Fit the randomized search on the data
+random_search.fit(X_train, Y_train)
+
+# Get the best set of hyperparameters
+best_params = random_search.best_params_
+
+# Use the best set of hyperparameters to make predictions
+pls = PLSRegression(**best_params)
+
+pls.fit(X_train, Y_train)
+#pls.fit(Xmsc_train, Ymsc_train)
+#pls.fit(Xsvn_train, Ysvn_train)
+
+predicted_ssc = pls.predict(X_val)
+
+# Evaluate the model's performance
+mse = mean_squared_error(Y_val, predicted_ssc)
+r2 = r2_score(Y_val, predicted_ssc)
+
+# Print the best hyperparameters and the performance of the model
+print("Best Hyperparameters: ", best_params)
+print("Mean Squared Error: ", mse)
+print("R-Squared Score: ", r2)
+
+
+import seaborn as sns
+
+# Get the results of the grid search
+results = pd.DataFrame(random_search.cv_results_)
+
+# Use seaborn to create a heatmap of the results
+sns.heatmap(results.pivot("param_n_components", "param_scale", "mean_test_score"))
+
+
+############################################################################
+
+"""  RandomForest using RandomizedSearchCV
+
+RandomizedSearchCV is a scikit-learn function that allows for a more efficient
+ way of searching for the optimal hyperparameter values for a machine learning
+ model. It is a random sampling-based version of GridSearchCV, which exhaustively 
+ searches through a defined parameter space. With RandomizedSearchCV, a user 
+ specifies the parameter space, the number of iterations to sample, and the 
+ function will randomly sample from the parameter space for the specified number 
+ of iterations. This allows for a more efficient search for the optimal set of
+ hyperparameters, as it doesn't need to check all possible combinations. It can 
+ also be used when the parameter space is too large to be searched exhaustively.
+
+
+"""
+
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn.metrics import mean_squared_error, r2_score
+
+# Define the parameter space to search
+param_dist = {'n_estimators': range(10, 300, 10),
+              'max_depth': range(1, 50),
+              'min_samples_split': range(2, 10),
+              'min_samples_leaf': range(1, 10)}
+
+# Create the model
+rf = RandomForestRegressor()
+
+# Create the randomized search object
+random_search = RandomizedSearchCV(rf, param_distributions=param_dist, n_iter=50, cv=5, random_state=42)
+
+# Fit the randomized search object to the data
+random_search.fit(X_train, Y_train)
+#random_search.fit(Xsvn_train, Ysvn_train)
+#random_search.fit(Xmsc_train, Ymsc_train)
+
+# Use the best estimator to predict on the test data
+best_rf = random_search.best_estimator_
+y_pred = best_rf.predict(X_val)
+
+# Evaluate the model's performance
+mse = mean_squared_error(Y_val, y_pred)
+r2 = r2_score(Y_val, y_pred)
+
+# Print the best hyperparameters and performance
+print("Best Hyperparameters: ", random_search.best_params_)
+print("Random Forest Regressor Mean Squared Error: ", mse)
+print("Random Forest Regressor R-Squared Score: ", r2)
+
+
+import seaborn as sns
+
+# Create a dataframe from the results of the randomized search
+results = pd.DataFrame(random_search.cv_results_)
+
+# Melt the dataframe to format it for a heatmap
+melted_results = results.melt(id_vars=['param_n_estimators', 'param_max_depth', 'param_min_samples_split', 'param_min_samples_leaf'], value_vars=['mean_test_score'])
+
+# # Create a heatmap
+# sns.heatmap(data=melted_results['value'], x='param_n_estimators', y='param_max_depth', hue='value', annot=True, fmt='.3g')
+# plt.show()
+
+
+##############################################################################
+
+
+"""
+Randomforest regression using GridSearchCV"
+
+GridSearchCV is a method in scikit-learn library that can be used to search for 
+the best hyperparameters of a model using a grid of possible parameter values.
+It is an exhaustive search method, meaning that it will try every possible
+combination of the specified parameters. The method takes in a model, a set 
+of hyperparameters to search over, and a scoring metric to evaluate the 
+performance of the model with different hyperparameters. It will then train 
+and evaluate the model for each combination of the specified hyperparameters
+and return the best set of hyperparameters that results in the best performance
+according to the specified scoring metric. Here is an example of how to use 
+GridSearchCV to find the best hyperparameters for a random forest regressor:
+
+
+"""
+
+
+from sklearn.model_selection import GridSearchCV
+from sklearn.ensemble import RandomForestRegressor
+import pandas as pd
+import seaborn as sns
+
+# Define the parameter grid to search
+param_grid = {'n_estimators': [50, 100, 200],
+              'max_depth': [5, 10, 20],
+              'min_samples_split': [2, 5, 10]}
+
+# Create the regressor and the GridSearchCV object
+regressor = RandomForestRegressor()
+grid_search = GridSearchCV(regressor, param_grid, cv=5)
+
+grid_search.fit(X_train, Y_train)
+#grid_search.fit(Xsvn_train, Ysvn_train)
+#grid_search.fit(Xmsc_train, Ymsc_train)
+
+# Create a DataFrame to store the results
+results = pd.DataFrame(grid_search.cv_results_)
+
+y_pred = grid_search.predict(X_val)
+
+# Evaluate the model's performance
+mse = mean_squared_error(Y_val, y_pred)
+r2 = r2_score(Y_val, y_pred)
+
+# Print the best hyperparameters and performance
+print("Best Hyperparameters: ", random_search.best_params_)
+print("Random Forest Regressor Mean Squared Error: ", mse)
+print("Random Forest Regressor R-Squared Score: ", r2)
+
+
+
+# Use seaborn to create a heatmap of the mean test scores
+sns.heatmap(results[column].pivot_table(values='mean_test_score', index='param_n_estimators', columns='param_max_depth'), annot=True)
+
+plt.show()
+
+
+
+###########################################################################
+
+
+"""Support Vector Machine Using RandomizedSearchCV
+
+This code uses the GridSearchCV class from scikit-learn to perform a grid search
+on the SVM model, with the specified parameter grid. The fit() method is used to 
+train the model on the training data and find the best set of hyperparameters.
+The results of the grid search are stored in a DataFrame, which is then used 
+to create a heatmap of the mean test scores for each combination of hyperparameters
+using Seaborn's heatmap() function. This allows us to visualize the performance 
+of the model for different combinations of hyperparameters and easily identify 
+the best set of hyperparameters.
+
+Note that this code snippet uses Seaborn library which is a visualization library
+that built on top of matplotlib. Also, you need to install it by running pip install 
+seaborn if it's not installed in your environment. And, you need to import it
+by adding import seaborn as sns in your code.
+
+"""
+
+
+from sklearn.svm import SVR
+from sklearn.model_selection import RandomizedSearchCV
+from scipy.stats import uniform
+
+# Define the parameter distribution for the hyperparameters
+param_dist = {'C': uniform(0, 10),
+              'kernel': ['linear', 'rbf'],
+              'gamma': uniform(0, 10)}
+
+# Create the SVM model
+svr = SVR()
+
+# Use RandomizedSearchCV to find the best hyperparameters
+random_search = RandomizedSearchCV(svr, param_distributions=param_dist, n_iter=10, cv=5)
+
+#random_search.fit(X_train, Y_train)
+#random_search.fit(Xsvn_train, Ysvn_train)
+random_search.fit(Xmsc_train, Ymsc_train)
+
+predicted_ssc = random_search.predict(X_val)
+
+# Evaluate the model's performance
+mse = mean_squared_error(Y_val, predicted_ssc)
+r2 = r2_score(Y_val, predicted_ssc)
+
+# Print the best hyperparameters
+print("Best Hyperparameters: ", random_search.best_params_)
+print("Random Forest Regressor Mean Squared Error: ", mse)
+print("Random Forest Regressor R-Squared Score: ", r2)
+
+results = pd.DataFrame(random_search.cv_results_)
+
+# Create a heatmap of the mean test scores for each combination of hyperparameters
+sns.heatmap(results.pivot_table(values='mean_test_score', index='param_C', columns='param_kernel'))
+plt.show()
+
+##################################################################################################
